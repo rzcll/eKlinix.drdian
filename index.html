@@ -1963,7 +1963,8 @@
                         <td class="p-2 md:p-3 align-top text-slate-600"><div class="font-medium mb-1"><b class="text-[9px] md:text-xs text-slate-400">S:</b> ${h.keluhan||'-'}</div><div class="text-[10px] md:text-xs text-slate-500 mt-1 md:mt-2"><b class="text-[9px] md:text-[10px] text-slate-400">O:</b> ${h.pemeriksaanFisik||'-'}</div></td>
                         <td class="p-2 md:p-3 align-top text-[10px] md:text-xs text-slate-500">
                             <span class="font-mono bg-slate-100 px-1 rounded border border-slate-200">TD: ${h.td||'-'}</span><br>
-                            <span class="font-mono bg-slate-100 px-1 rounded mt-1 inline-block border border-slate-200">S: ${h.suhu?h.suhu+'°C':'-'}</span>
+                            <span class="font-mono bg-slate-100 px-1 rounded mt-1 inline-block border border-slate-200">S: ${h.suhu?h.suhu+'°C':'-'}</span><br>
+                            <span class="font-mono bg-slate-100 px-1 rounded mt-1 inline-block border border-slate-200 text-teal-700 font-bold">BB: ${h.bb?h.bb+' kg':'-'}</span>
                             ${h.laborat ? `<div class="mt-2 pt-2 border-t border-slate-100"><b class="text-[9px] text-slate-400">Lab:</b><br><span class="whitespace-pre-wrap">${h.laborat}</span></div>` : ''}
                         </td>
                         <td class="p-2 md:p-3 align-top text-[10px] md:text-xs bg-slate-50/50 rounded-r-lg">
@@ -2204,6 +2205,8 @@
                         logRiwayat = { 
                             erm: pelayananData[idx].erm, tgl: ts.toLocaleDateString('id-ID'), jam: ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}), 
                             keluhan: pelayananData[idx].keluhan, pemeriksaanFisik: pelayananData[idx].pemeriksaanFisik, td: pelayananData[idx].td, suhu: pelayananData[idx].suhu, 
+                            bb: pelayananData[idx].bb, // BB disimpan di Riwayat Global
+                            nadi: pelayananData[idx].nadi, nafas: pelayananData[idx].nafas, spo2: pelayananData[idx].spo2, tb: pelayananData[idx].tb,
                             laborat: pelayananData[idx].laborat,
                             diagnosa1: pelayananData[idx].diagnosa1, diagnosa2: pelayananData[idx].diagnosa2, diagnosa3: pelayananData[idx].diagnosa3, resep: pelayananData[idx].resep 
                         };
@@ -2217,7 +2220,12 @@
                             riwayatMedisGlobal[rIdx].keluhan = pelayananData[idx].keluhan;
                             riwayatMedisGlobal[rIdx].pemeriksaanFisik = pelayananData[idx].pemeriksaanFisik;
                             riwayatMedisGlobal[rIdx].td = pelayananData[idx].td;
+                            riwayatMedisGlobal[rIdx].nadi = pelayananData[idx].nadi;
+                            riwayatMedisGlobal[rIdx].nafas = pelayananData[idx].nafas;
                             riwayatMedisGlobal[rIdx].suhu = pelayananData[idx].suhu;
+                            riwayatMedisGlobal[rIdx].spo2 = pelayananData[idx].spo2;
+                            riwayatMedisGlobal[rIdx].tb = pelayananData[idx].tb;
+                            riwayatMedisGlobal[rIdx].bb = pelayananData[idx].bb; // Sinkronkan Update BB
                             riwayatMedisGlobal[rIdx].laborat = pelayananData[idx].laborat;
                             riwayatMedisGlobal[rIdx].diagnosa1 = pelayananData[idx].diagnosa1;
                             riwayatMedisGlobal[rIdx].diagnosa2 = pelayananData[idx].diagnosa2;
