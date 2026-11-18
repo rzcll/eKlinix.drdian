@@ -1612,10 +1612,10 @@
                     const resConfig = await supabaseClient.from('pengaturan').select('*');
                     if (resConfig.error) throw resConfig.error;
 
-                    // Fetch keseluruhan data mem-bypass batas 1000 baris
+                    // Menggunakan 'erm' sebagai fallback sorting agar pagination Supabase lebih stabil dan tidak melompati data
                     const allPasien = await fetchAllData('pasien', 'erm', false);
-                    const allPelayanan = await fetchAllData('pelayanan');
-                    const allRiwayat = await fetchAllData('riwayat');
+                    const allPelayanan = await fetchAllData('pelayanan', 'erm', false);
+                    const allRiwayat = await fetchAllData('riwayat', 'erm', false);
 
                     if (resConfig.data) {
                         resConfig.data.forEach(item => { appConfig[item.key] = item.value; });
@@ -1949,10 +1949,48 @@
             const p = patientsData.find(x => x.erm === erm); if(!p) return;
             document.getElementById('riwayatNama').textContent = p.nama; document.getElementById('riwayatErm').textContent = p.erm;
             const tb = document.getElementById('tableRiwayatList'); tb.innerHTML = '';
-            const hist = riwayatMedisGlobal.filter(h => h.erm === erm);
-            if(hist.length === 0) tb.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400">Belum ada riwayat kunjungan pelayanan medis.</td></tr>`;
-            else {
-                hist.reverse().forEach((h, idx) => {
+            
+            // Perbaikan pencocokan eRM agar lebih kuat (case-insensitive & trim)
+            let hist = riwayatMedisGlobal.filter(h => h.erm && h.erm.trim().toUpperCase() === erm.trim().toUpperCase());
+            
+            // Sinkronisasi data dari pelayanan (berjaga-jaga jika riwayat tidak ter-load sempurna dari server)
+            const pelHist = pelayananData.filter(pel => pel.erm && pel.erm.trim().toUpperCase() === erm.trim().toUpperCase() && (pel.status === 'selesai_kasir' || pel.status === 'antrean_kasir'));
+            
+            pelHist.forEach(pel => {
+                if(!pel.tanggalSistem) return;
+                const ts = new Date(pel.tanggalSistem);
+                const tglStr = ts.toLocaleDateString('id-ID');
+                const jamStr = pel.waktuMedisSelesai || ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+                
+                // Jika data belum ada di tabel riwayat, rekonstruksi otomatis
+                const isExist = hist.some(h => h.tgl === tglStr);
+                if (!isExist) {
+                    hist.push({
+                        erm: pel.erm, tgl: tglStr, jam: jamStr,
+                        keluhan: pel.keluhan, pemeriksaanFisik: pel.pemeriksaanFisik, 
+                        td: pel.td, suhu: pel.suhu, bb: pel.bb, nadi: pel.nadi, nafas: pel.nafas, 
+                        spo2: pel.spo2, tb: pel.tb, laborat: pel.laborat,
+                        diagnosa1: pel.diagnosa1, diagnosa2: pel.diagnosa2, diagnosa3: pel.diagnosa3, 
+                        resep: pel.resep
+                    });
+                }
+            });
+
+            // Urutkan riwayat dari yang paling baru
+            hist.sort((a, b) => {
+                const parseDate = (dStr) => {
+                    if (!dStr) return 0;
+                    const p = dStr.split('/');
+                    if (p.length === 3) return new Date(p[2], p[1]-1, p[0]).getTime();
+                    return new Date(dStr).getTime() || 0;
+                };
+                return parseDate(b.tgl) - parseDate(a.tgl);
+            });
+
+            if(hist.length === 0) {
+                tb.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400">Belum ada riwayat kunjungan pelayanan medis.</td></tr>`;
+            } else {
+                hist.forEach((h, idx) => {
                     let diagTxt = '';
                     if(h.diagnosa1) diagTxt += `<div class="font-bold text-blue-700">1. ${h.diagnosa1}</div>`;
                     if(h.diagnosa2) diagTxt += `<div>2. ${h.diagnosa2}</div>`;
@@ -1962,9 +2000,15 @@
                         <td class="p-2 md:p-3 align-top"><span class="font-bold text-slate-700">${h.tgl}</span><br><span class="text-[9px] md:text-xs text-slate-400 font-mono">${h.jam}</span></td>
                         <td class="p-2 md:p-3 align-top text-slate-600"><div class="font-medium mb-1"><b class="text-[9px] md:text-xs text-slate-400">S:</b> ${h.keluhan||'-'}</div><div class="text-[10px] md:text-xs text-slate-500 mt-1 md:mt-2"><b class="text-[9px] md:text-[10px] text-slate-400">O:</b> ${h.pemeriksaanFisik||'-'}</div></td>
                         <td class="p-2 md:p-3 align-top text-[10px] md:text-xs text-slate-500">
-                            <span class="font-mono bg-slate-100 px-1 rounded border border-slate-200">TD: ${h.td||'-'}</span><br>
-                            <span class="font-mono bg-slate-100 px-1 rounded mt-1 inline-block border border-slate-200">S: ${h.suhu?h.suhu+'°C':'-'}</span><br>
-                            <span class="font-mono bg-slate-100 px-1 rounded mt-1 inline-block border border-slate-200 text-teal-700 font-bold">BB: ${h.bb?h.bb+' kg':'-'}</span>
+                            <div class="grid grid-cols-2 gap-1 mb-1">
+                                <span class="font-mono bg-slate-100 px-1 rounded border border-slate-200">TD: ${h.td||'-'}</span>
+                                <span class="font-mono bg-slate-100 px-1 rounded border border-slate-200">HR: ${h.nadi?h.nadi+'x':'-'}</span>
+                                <span class="font-mono bg-slate-100 px-1 rounded border border-slate-200">RR: ${h.nafas?h.nafas+'x':'-'}</span>
+                                <span class="font-mono bg-slate-100 px-1 rounded border border-slate-200">S: ${h.suhu?h.suhu+'°C':'-'}</span>
+                                <span class="font-mono bg-slate-100 px-1 rounded border border-slate-200">SpO2: ${h.spo2?h.spo2+'%':'-'}</span>
+                                <span class="font-mono bg-slate-100 px-1 rounded border border-slate-200">TB: ${h.tb?h.tb+'cm':'-'}</span>
+                            </div>
+                            <span class="font-mono bg-slate-100 px-1 rounded mt-1 block text-center border border-slate-200 text-teal-700 font-bold">BB: ${h.bb?h.bb+' kg':'-'}</span>
                             ${h.laborat ? `<div class="mt-2 pt-2 border-t border-slate-100"><b class="text-[9px] text-slate-400">Lab:</b><br><span class="whitespace-pre-wrap">${h.laborat}</span></div>` : ''}
                         </td>
                         <td class="p-2 md:p-3 align-top text-[10px] md:text-xs bg-slate-50/50 rounded-r-lg">
@@ -2032,6 +2076,59 @@
                         if(error) throw error;
                     } catch(err) { showToast('Gagal server: '+err.message,'error'); }
                 }
+            }
+        }
+
+        async function fetchDataDariSpreadsheet() {
+            const tb = document.getElementById('tableBody');
+            if(tb) tb.innerHTML = `<tr><td colspan="7" class="p-10 text-center text-teal-600 font-bold"><i class="fas fa-circle-notch fa-spin mr-2"></i> Sinkronisasi Data Database...</td></tr>`;
+            
+            if (supabaseClient) {
+                try {
+                    const resConfig = await supabaseClient.from('pengaturan').select('*');
+                    if (resConfig.error) throw resConfig.error;
+
+                    // Perbaikan: Menghilangkan order by pada pelayanan & riwayat untuk mencegah data ter-skip karena tidak ada kolom unik yang pasti
+                    const allPasien = await fetchAllData('pasien', 'erm', false);
+                    const allPelayanan = await fetchAllData('pelayanan');
+                    const allRiwayat = await fetchAllData('riwayat');
+
+                    if (resConfig.data) {
+                        resConfig.data.forEach(item => { appConfig[item.key] = item.value; });
+                        document.getElementById('set_struk_kop').value = appConfig.strukKop || 'eKlinik';
+                        document.getElementById('set_struk_alamat').value = appConfig.strukAlamat || 'Struk Resmi';
+                        document.getElementById('set_struk_footer').value = appConfig.strukFooter || 'Terima Kasih';
+                    }
+                    
+                    patientsData = allPasien;
+                    
+                    if (allPelayanan) {
+                        pelayananData = allPelayanan.map(p => {
+                            const pat = patientsData.find(x => x.erm === p.erm) || {};
+                            return { ...p, nama: pat.nama || p.nama, nik: pat.nik || '-', tanggalSistem: new Date(p.tanggalSistem), jk: pat.jk || '-', alamat: pat.alamat || '-', rt: pat.rt || '-', rw: pat.rw || '-', kel: pat.kel || '-', ttl: pat.ttl || '-', no_wa: pat.no_wa || '-', tglKontrol: p.tglKontrol || '', statusKontrol: p.statusKontrol || '-' };
+                        });
+                    }
+                    
+                    if (allRiwayat) {
+                        riwayatMedisGlobal = allRiwayat;
+                    }
+                    
+                    loadMasterDiagnosa();
+                    
+                    currentPagePasien=1; renderTabel(patientsData);
+                    initKalenderMedis(); 
+                    renderTabelPelayananMedis();
+                    renderTabelPelayananKasir();
+                    if(document.getElementById('view-jadwal-kontrol') && document.getElementById('view-jadwal-kontrol').classList.contains('hidden') === false) renderJadwalKontrol();
+                    updateBadges();
+                    showToast('Sinkronisasi Database Berhasil!', 'success');
+
+                } catch(err) {
+                    showToast('Gagal sinkronisasi data: ' + err.message, 'error');
+                    currentPagePasien=1; renderTabel(patientsData); 
+                }
+            } else {
+                setTimeout(() => { showToast('Mode Lokal. Silakan isi SUPABASE URL & KEY!', 'warning'); loadMasterDiagnosa(); currentPagePasien=1; renderTabel(patientsData); initKalenderMedis(); updateBadges(); }, 800);
             }
         }
 
@@ -2197,15 +2294,18 @@
                         pelayananData[idx].statusKontrol = elTglKontrol.value ? 'pending' : '-';
                     }
 
+                    const ts = new Date(pelayananData[idx].tanggalSistem);
+                    const tglStr = ts.toLocaleDateString('id-ID');
+
                     if(pelayananData[idx].status === 'antrean_medis') {
                         pelayananData[idx].status = 'antrean_kasir'; 
                         pelayananData[idx].waktuMedisSelesai = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
                         isNewSelesai = true;
-                        const ts = new Date(pelayananData[idx].tanggalSistem);
+                        
                         logRiwayat = { 
-                            erm: pelayananData[idx].erm, tgl: ts.toLocaleDateString('id-ID'), jam: ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}), 
+                            erm: pelayananData[idx].erm, tgl: tglStr, jam: ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}), 
                             keluhan: pelayananData[idx].keluhan, pemeriksaanFisik: pelayananData[idx].pemeriksaanFisik, td: pelayananData[idx].td, suhu: pelayananData[idx].suhu, 
-                            bb: pelayananData[idx].bb, // BB disimpan di Riwayat Global
+                            bb: pelayananData[idx].bb,
                             nadi: pelayananData[idx].nadi, nafas: pelayananData[idx].nafas, spo2: pelayananData[idx].spo2, tb: pelayananData[idx].tb,
                             laborat: pelayananData[idx].laborat,
                             diagnosa1: pelayananData[idx].diagnosa1, diagnosa2: pelayananData[idx].diagnosa2, diagnosa3: pelayananData[idx].diagnosa3, resep: pelayananData[idx].resep 
@@ -2213,9 +2313,9 @@
                         riwayatMedisGlobal.push(logRiwayat);
                     } else {
                         // Fitur Edit Hasil jika sudah dikirim ke kasir / riwayat telah terbentuk
-                        const ts = new Date(pelayananData[idx].tanggalSistem);
-                        const jamStr = ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
-                        let rIdx = riwayatMedisGlobal.findIndex(r => r.erm === pelayananData[idx].erm && r.jam === jamStr);
+                        // Perbaikan: Mencari riwayat berdasarkan 'erm' dan 'tanggal', bukan jam untuk menghindari miss-format
+                        let rIdx = riwayatMedisGlobal.findIndex(r => r.erm === pelayananData[idx].erm && r.tgl === tglStr);
+                        
                         if(rIdx !== -1) {
                             riwayatMedisGlobal[rIdx].keluhan = pelayananData[idx].keluhan;
                             riwayatMedisGlobal[rIdx].pemeriksaanFisik = pelayananData[idx].pemeriksaanFisik;
@@ -2225,13 +2325,25 @@
                             riwayatMedisGlobal[rIdx].suhu = pelayananData[idx].suhu;
                             riwayatMedisGlobal[rIdx].spo2 = pelayananData[idx].spo2;
                             riwayatMedisGlobal[rIdx].tb = pelayananData[idx].tb;
-                            riwayatMedisGlobal[rIdx].bb = pelayananData[idx].bb; // Sinkronkan Update BB
+                            riwayatMedisGlobal[rIdx].bb = pelayananData[idx].bb;
                             riwayatMedisGlobal[rIdx].laborat = pelayananData[idx].laborat;
                             riwayatMedisGlobal[rIdx].diagnosa1 = pelayananData[idx].diagnosa1;
                             riwayatMedisGlobal[rIdx].diagnosa2 = pelayananData[idx].diagnosa2;
                             riwayatMedisGlobal[rIdx].diagnosa3 = pelayananData[idx].diagnosa3;
                             riwayatMedisGlobal[rIdx].resep = pelayananData[idx].resep;
                             logRiwayat = riwayatMedisGlobal[rIdx];
+                        } else {
+                            // Jika ternyata riwayat sebelumnya tidak ditemukan di Supabase, buat paksa agar tidak hilang
+                            isNewSelesai = true;
+                            logRiwayat = { 
+                                erm: pelayananData[idx].erm, tgl: tglStr, jam: ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}), 
+                                keluhan: pelayananData[idx].keluhan, pemeriksaanFisik: pelayananData[idx].pemeriksaanFisik, td: pelayananData[idx].td, suhu: pelayananData[idx].suhu, 
+                                bb: pelayananData[idx].bb,
+                                nadi: pelayananData[idx].nadi, nafas: pelayananData[idx].nafas, spo2: pelayananData[idx].spo2, tb: pelayananData[idx].tb,
+                                laborat: pelayananData[idx].laborat,
+                                diagnosa1: pelayananData[idx].diagnosa1, diagnosa2: pelayananData[idx].diagnosa2, diagnosa3: pelayananData[idx].diagnosa3, resep: pelayananData[idx].resep 
+                            };
+                            riwayatMedisGlobal.push(logRiwayat);
                         }
                     }
                 }
